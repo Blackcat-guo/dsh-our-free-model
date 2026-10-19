@@ -135,6 +135,9 @@ const { callRoute, fakeContext, until } = await import('./lib/fake-kernel.mjs')
 // The lane's wire module reads UPSTREAM_BASE once for the free lane; the sealed
 // lane has its own base from the seal. Import order matters for the boot blocks.
 process.env.OUR_FREE_MODEL_BASE ??= 'http://127.0.0.1:9'
+// The helper above scrubs the ambient desktop-shell marker (`DSH_TAURI_EMBEDDED`),
+// so the negative cases below exercise the gate rather than the terminal that
+// launched the suite; boot blocks that need a host set it explicitly.
 const { detectSealedHost, unlockSealedLane, openSeal, openSealWith, deriveSealKey, SEAL_AAD, IV_BYTES, TAG_BYTES } = await import('../src/vault.js')
 const { buildEacCatalog, eacDisplayName, isEacEntry, EAC_CHANNEL } = await import('../src/catalog.js')
 const { FreeModelAdapter } = await import('../src/adapter.js')
@@ -175,6 +178,25 @@ const { createGatewayServer, resetAnalytics, poolProbe } = await import('../work
     argv: ['node', 'bin.js', 'web', '--host', '127.0.0.1', '--port', '57543', '--profile', 'web-desktop'],
   })
   check('the gate admits the Tauri shell on the full signal trio', aio, 'aio')
+  // A DSH Tauri desktop does not boot a fixed profile name: it runs the kernel
+  // with whatever profile the user works in. The machine this was reported from
+  // runs `--profile core-021` (read off the live kernel's command line), so every
+  // profile-name rule above misses it and the lane stayed dark on a real desktop
+  // install (#267). What the shell does stamp is its own marker in the kernel's
+  // environment: `DSH_TAURI_EMBEDDED`, the same signal `dsh-tauri` gates its
+  // desktop-carrier adapter on.
+  check('the gate admits a DSH Tauri desktop on the shell marker, whatever profile it runs (#267)', detectSealedHost({
+    env: { DSH_HOME: 'C:/Users/u/.dsh', DSH_TAURI_EMBEDDED: '1' },
+    execPath: 'D:/Tools/nodejs/node.exe',
+    argv: ['D:/Tools/nodejs/node.exe', 'C:/Users/u/AppData/Roaming/dsh-tauri/dependencies/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js', '--profile', 'core-021', '--port', '3080'],
+    profileName: 'core-021',
+  }), 'harness')
+  check('the marker alone admits it, for a kernel that reports no profile context', detectSealedHost({
+    env: { DSH_TAURI_EMBEDDED: '1' },
+  }), 'harness')
+  check('the marker value has to be exactly 1', detectSealedHost({
+    env: { DSH_TAURI_EMBEDDED: 'true' }, profileName: 'core-021',
+  }), null)
   const unlockedHere = unlockSealedLane({ profileName: undefined })
   check('unlock returns nothing on this (unapproved) test host', unlockedHere, null)
 }
@@ -867,12 +889,13 @@ const { createGatewayServer, resetAnalytics, poolProbe } = await import('../work
   }
 
   /** Simulate the Tauri shell's signals — or a named kernel profile — around one boot. */
-  async function bootWith({ simulateAio, profileName }) {
+  async function bootWith({ simulateAio, profileName, shellMarker }) {
     const previousArgv = [...process.argv]
     const previousExecPath = process.execPath
     const previousHome = process.env.DSH_HOME
     const home = fs.mkdtempSync(path.join(os.tmpdir(), simulateAio ? 'ofm-aio-com.deepseek.dsh.desktop.aio-' : 'ofm-vault-'))
     process.env.DSH_HOME = home
+    if (shellMarker === true) process.env.DSH_TAURI_EMBEDDED = '1'
     let aioExecPath = ''
     if (simulateAio) {
       aioExecPath = path.join(home, 'resources', 'node', 'node.exe')
@@ -898,6 +921,7 @@ const { createGatewayServer, resetAnalytics, poolProbe } = await import('../work
         process.argv = previousArgv
         process.execPath = previousExecPath
         process.env.DSH_HOME = previousHome
+        delete process.env.DSH_TAURI_EMBEDDED
         globalThis.fetch = realFetch
         lane.fetch = null
         for (const disposer of ctx.__disposers.reverse()) {
@@ -909,6 +933,7 @@ const { createGatewayServer, resetAnalytics, poolProbe } = await import('../work
       process.argv = previousArgv
       process.execPath = previousExecPath
       process.env.DSH_HOME = previousHome
+      delete process.env.DSH_TAURI_EMBEDDED
       globalThis.fetch = realFetch
       lane.fetch = null
       for (const disposer of ctx.__disposers.reverse()) {
@@ -979,6 +1004,22 @@ const { createGatewayServer, resetAnalytics, poolProbe } = await import('../work
       ], [true, true])
       const poolRow = await callRoute(api(), 'GET', '/api/our-free-model/pool')
       check('the pool route answers on a DSH Tauri host', poolRow.json?.ok, true)
+    } finally { restore() }
+  }
+
+  {
+    const { ctx, api, restore } = await bootWith({ shellMarker: true })
+    try {
+      const adapter = ctx.__captured.adapters[0]?.adapter
+      await until(async () => (await adapter.listModels(ROUTE_MAIN)).some(model => model.id === 'deepseek-ai/deepseek-v4.1-flash'), {
+        what: 'the sealed roster on the marker host', timeoutMs: 10000,
+      })
+      const summary = await callRoute(api(), 'GET', '/api/our-free-model/summary')
+      check('a boot under the desktop shell marker lists the sealed models and opens the lane (#267)', [
+        (summary.json.catalog ?? []).some(entry => entry.id === 'moonshotai/kimi-k3'), summary.json.laneAvailable,
+      ], [true, true])
+      const poolRow = await callRoute(api(), 'GET', '/api/our-free-model/pool')
+      check('the pool route answers under the desktop shell marker too', poolRow.json?.ok, true)
     } finally { restore() }
   }
 

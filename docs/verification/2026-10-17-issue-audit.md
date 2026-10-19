@@ -4,12 +4,14 @@
 
 **结论：本次修复了多组仍可复现的本地缺陷，但不能宣称所有 issue 已解决或所有真实上游均可用。没有推送、发布、修改版本、替换公钥或重签发布清单。**
 
+> **2026-10-19 更正：**#267 一行判断有误，已按实测改写（见下表该行）。原文把 DSH Tauri 桌面端当成「会声明 `tauri` profile」的宿主，据此断言闸门拒绝它；实测该桌面端用用户实际在用的档案启动内核（本机 `--profile core-021`），闸门拒的是**每一个真实桌面安装**，而不是某个例外档案。修复与验收记录见 [2026-10-19-eac-tauri-host-gate.md](./2026-10-19-eac-tauri-host-gate.md)。
+
 ## 审计计数
 
 | 判断 | 数量 |
 | --- | ---: |
-| 上游或环境阻断 | 68 |
-| 本次修复 | 25 |
+| 上游或环境阻断 | 67 |
+| 本次修复 | 26 |
 | 待发布或分发处理 | 10 |
 | 待补复现或验证 | 62 |
 | 未实现的功能请求 | 17 |
@@ -173,7 +175,7 @@
 | #271 [dsh-plugin.org \| dsh-plugin-hub] plugin install failed: ebony-vinyl/dsh-our-free-model | open | 待补复现或验证 | The body reports GitHub access/request timeout without a plugin stack or lifecycle-hook failure. The local isolated source/resource package starts successfully. 证据：package.json |
 | #269 建议引入 freebuff 免费渠道（经 Freebuff2API 中转，OpenAI 兼容） | open | 部分解决 | The generic aggregate editor already supports a known provider's custom Base URL, key and discovered models. There is no Freebuff preset or arbitrary provider registration, so using Freebuff2API requires repurposing a compatible known registry entry and is not a dedicated integration. 证据：client.js；src/providers/registry.json；src/aggregate.js |
 | #268 请把这些提供商加上 | open | 待补复现或验证 | The body requests providers from an external agent2api repository without enumerating them. Current UI exposes the built-in registry, but the local issue body is insufficient to compare complete provider coverage or claim the request satisfied. 证据：.verify/issue-audit-20261017/issues.json；src/providers/registry.json；client.js |
-| #267 EAC 宿主闸门在 DSH Tauri 桌面端（profile `tauri`）下不认可宿主，协付车道整条不加载 | open | 上游或环境阻断 | detectSealedHost still accepts desktop/web/web-desktop plus the AIO signal triple and rejects profile tauri. The observed gate behavior is confirmed statically. Extending trusted host identity needs the host/auth owner; recognizing every arbitrary profile is not a justified fix and would weaken the gate. 证据：src/vault.js:73；index.js:205 |
+| #267 EAC 宿主闸门在 DSH Tauri 桌面端（profile `tauri`）下不认可宿主，协付车道整条不加载 | closed | 本次修复 | **2026-10-19 更正：**本行原先的判断（"仍只认 AIO 三信号与 desktop/web/web-desktop，拒绝 profile tauri，需要宿主所有者介入"）建立在一个错误的宿主模型上。真实 DSH Tauri 桌面端**不固定 profile 名**：它用用户实际在用的档案启动内核，本机实测命令行为 `...\dsh\lib\bin.js --profile core-021 --patch ... --port 3080 --no-open`（`Get-CimInstance Win32_Process` 读取），因此 `desktop` / `tauri` 这类名字规则永远命中不了它，而当时的回归用 `profileName: 'tauri'` 断言通过——测的是一个不存在的宿主。外壳真正稳定的身份信号是它打在进程环境里的 `DSH_TAURI_EMBEDDED=1`（`D:\Software\DSH Tauri\resources\node_modules\dsh-tauri\dist\index.js:24,26,91` 以同一标记挂载桌面承载适配器）。已在 `src/vault.js:73` 增加该标记分支；实测本机闸门由 `null` 变为 `harness`、密封车道解锁为 `true`。证据：src/vault.js；scripts/vault-test.mjs；docs/verification/2026-10-19-eac-tauri-host-gate.md |
 | #266 [dsh-plugin.org \| dsh-plugin-hub] plugin install failed: ebony-vinyl/dsh-our-free-model | open | 待补复现或验证 | The body reports GitHub access/request timeout without a plugin stack or lifecycle-hook failure. The local isolated source/resource package starts successfully. 证据：package.json |
 | #265 [dsh-plugin.org \| dsh-plugin-hub] plugin distribution incomplete: ebony-vinyl/dsh-our-free-model | open | 上游或环境阻断 | The body fails during git ls-remote over HTTPS, before checkout or any plugin lifecycle hook. This is not proof of an incomplete plugin build. The root package.json has no prepare/install/postinstall lifecycle script. The generic pnpm allowBuilds advice appended by the host does not establish that a script ran. 证据：package.json |
 | #264 cline白嫖渠道下的step 5preview大模型不支持多模态。 | open | 待补复现或验证 | 当前Cline已从models.dev modalities.input补充图片能力，本地兜底显式值优先；报告缺少step模型精确ID和远端能力条目，无法确认该模型目录是否声明image。不能凭模型品牌强开图片能力。 证据：vendor/channel-pack/src/cline-models-dev.ts:128；vendor/channel-pack/src/cline-models-dev.ts:196；vendor/channel-pack/src/cline-adapter.ts:305 |

@@ -25,6 +25,13 @@ for (const name of ['OUR_FREE_MODEL_BASE', 'OUR_FREE_MODEL_KILO_BASE']) {
   }
 }
 
+// Same discipline for the host gate: a suite started from a DSH Tauri session
+// inherits that shell's marker (`DSH_TAURI_EMBEDDED=1`) in every descendant, so
+// the suites that pin a host the gate must refuse would measure the caller's
+// terminal instead of the gate (#267). A suite that needs a host supplies its
+// own signals, the way `vault-test` boot blocks set the marker explicitly.
+delete process.env.DSH_TAURI_EMBEDDED
+
 /**
  * One healthy SSE body, in the Chat Completions shape every stub model speaks.
  *

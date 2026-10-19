@@ -15,7 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import assert from 'node:assert/strict'
-import { parseVersion, compareVersions, parseManifest, fileUrlOf, downloadManifest, parseUploadPackRefs, PluginUpdater, stageRelease, verifyStaged, backupPackage, restoreBackup, installStaged, verifyInstalled, signManifest, verifyManifestSignature, stableStringify, DEFAULT_MANIFEST_SOURCES, PINNED_MANIFEST_PUBLIC_KEY } from '../src/updater.js'
+import { parseVersion, compareVersions, parseManifest, fileUrlOf, downloadManifest, parseUploadPackRefs, PluginUpdater, stageRelease, verifyStaged, stagedReleaseKnowsDesktopHost, backupPackage, restoreBackup, installStaged, verifyInstalled, signManifest, verifyManifestSignature, stableStringify, DEFAULT_MANIFEST_SOURCES, PINNED_MANIFEST_PUBLIC_KEY } from '../src/updater.js'
 import { selfReload } from '../src/reload.js'
 const CONTROLLED_DEFAULTS = ['http://127.0.0.1:1/never.json']
 
@@ -517,6 +517,70 @@ await checkAsync('apply re-resolves after check and installs only the new immuta
     assert.equal(requests.some(url => url === rawSource), false)
     assert.equal(requests.filter(url => url.includes(`/${SNAPSHOT}/`)).length, 1, 'old snapshot supplies no file to apply')
     assert.equal(updater.status().lastApplied.ok, true)
+  } finally {
+    fs.rmSync(pkg, { recursive: true, force: true })
+    fs.rmSync(data, { recursive: true, force: true })
+  }
+})
+
+/** Serve one signed snapshot in which only these files exist. */
+const snapshotFor = files => {
+  const manifest = manifestFor(files)
+  const fetchImpl = async url => {
+    if (url === resolverUrl) return new Response(JSON.stringify({ sha: SNAPSHOT }))
+    const prefix = `https://raw.githubusercontent.com/${REPOSITORY}/${SNAPSHOT}/`
+    if (url === prefix + 'feed/manifest.json') return new Response(JSON.stringify(manifest))
+    const rel = String(url).slice(prefix.length)
+    return new Response(files[rel] ?? 'bad ref', { status: String(url).startsWith(prefix) ? 200 : 404 })
+  }
+  return fetchImpl
+}
+const updaterFor = (pkg, data, fetchImpl) => new PluginUpdater({
+  pkgDir: pkg, dataDir: data, settings: () => ({}), fetchImpl, defaultSources: [rawSource], manifestPublicKey: TEST_PUBLIC_KEY,
+})
+const withShellMarker = async (fn) => {
+  const previous = process.env.DSH_TAURI_EMBEDDED
+  process.env.DSH_TAURI_EMBEDDED = '1'
+  try { return await fn() } finally {
+    if (previous === undefined) delete process.env.DSH_TAURI_EMBEDDED
+    else process.env.DSH_TAURI_EMBEDDED = previous
+  }
+}
+
+await checkAsync('an upgrade that would re-darken the co-paid lane is refused on a DSH Tauri desktop (#267)', async () => {
+  // The desktop host gate is shipped code: a release cut before it existed has
+  // no way to recognise this host, and installing it silently removed the
+  // co-paid roster from a running desktop install.
+  const pkg = makePackage(OLD)
+  const data = makeDataDir()
+  try {
+    await withShellMarker(async () => {
+      const updater = updaterFor(pkg, data, snapshotFor(newFiles))
+      await updater.check()
+      await assert.rejects(() => updater.apply({ version: NEW }), /does not recognise DSH_TAURI_EMBEDDED/)
+      assert.equal(updaterVersion(pkg), OLD, 'the installed copy is left untouched')
+      assert.equal(fs.readFileSync(path.join(pkg, 'index.js'), 'utf8'), oldFiles['index.js'])
+      assert.equal(updater.status().lastApplied.ok, false, 'the refusal is reported as a failed upgrade')
+    })
+  } finally {
+    fs.rmSync(pkg, { recursive: true, force: true })
+    fs.rmSync(data, { recursive: true, force: true })
+  }
+})
+
+await checkAsync('the same upgrade installs when the release carries the desktop host marker', async () => {
+  const pkg = makePackage(OLD)
+  const data = makeDataDir()
+  const gatedFiles = { ...newFiles, 'src/vault.js': "export const TAURI_EMBEDDED_ENV = 'DSH_TAURI_EMBEDDED'\n" }
+  try {
+    await withShellMarker(async () => {
+      const updater = updaterFor(pkg, data, snapshotFor(gatedFiles))
+      await updater.check()
+      assert.equal(await stagedReleaseKnowsDesktopHost(path.join(data, 'stage'), manifestFor(gatedFiles)), false, 'nothing is staged before apply')
+      await updater.apply({ version: NEW })
+      assert.equal(updaterVersion(pkg), NEW)
+      assert.equal(fs.readFileSync(path.join(pkg, 'src/vault.js'), 'utf8'), gatedFiles['src/vault.js'])
+    })
   } finally {
     fs.rmSync(pkg, { recursive: true, force: true })
     fs.rmSync(data, { recursive: true, force: true })

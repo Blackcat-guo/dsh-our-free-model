@@ -28,6 +28,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { TAURI_EMBEDDED_ENV } from './vault.js'
 
 const REPO = 'Ebony-Vinyl/dsh-our-free-model'
 
@@ -538,6 +539,33 @@ export function verifyStaged(stageDir, manifest) {
 }
 
 /**
+ * Whether a staged release still recognises the DSH Tauri desktop host.
+ *
+ * The co-paid lane's host gate is code, not configuration: a release cut before
+ * the desktop shell marker was understood carries a gate that reports no host on
+ * a real desktop install, and installing it silently darkens the lane again
+ * (#267). Upgrading is the only moment that downgrade can still be refused, so
+ * it is refused here — after the staged bytes verify and before the installed
+ * copy changes.
+ *
+ * The check reads the staged JavaScript as text and never imports it: nothing
+ * from a download executes before it has been verified and installed.
+ *
+ * @param {string} stageDir - verified staging directory
+ * @param {{ files: Array<{ path: string }> }} manifest - the manifest the stage was verified against
+ * @returns {boolean} true when some shipped script names the desktop host marker
+ */
+export function stagedReleaseKnowsDesktopHost(stageDir, manifest) {
+  for (const file of manifest.files) {
+    if (!file.path.endsWith('.js')) continue
+    let text
+    try { text = fs.readFileSync(path.join(stageDir, ...file.path.split('/')), 'utf8') } catch { continue }
+    if (text.includes(TAURI_EMBEDDED_ENV)) return true
+  }
+  return false
+}
+
+/**
  * Top-level directories and files that belong to the repository rather than to a
  * release. An installed copy never has them; a git-clone or linked development
  * copy always does, and it is the same directory the upgrader operates on.
@@ -965,6 +993,13 @@ export class PluginUpdater {
         fetchImpl: this.deps.fetchImpl, onProgress,
       })
       verifyStaged(this.stageDir, manifest)
+      // This host can tell, before the swap, whether the incoming release would
+      // darken the co-paid lane it is running right now. Refuse that instead of
+      // installing a regression the owner would only notice as a missing roster
+      // (#267); the installed copy is still untouched at this point.
+      if (process.env[TAURI_EMBEDDED_ENV] === '1' && !stagedReleaseKnowsDesktopHost(this.stageDir, manifest)) {
+        throw new Error(`release ${manifest.version} does not recognise ${TAURI_EMBEDDED_ENV} and would disable the co-paid lane on this DSH Tauri desktop; install a release that carries the desktop host gate`)
+      }
 
       onProgress({ phase: 'install' })
       const backedUp = backupPackage(this.deps.pkgDir, this.backupDir)

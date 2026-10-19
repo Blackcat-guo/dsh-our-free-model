@@ -31,7 +31,12 @@ if (!['all', 'contributor', 'release'].includes(options.mode)) {
   process.exit(1)
 }
 const { mode, only } = options
-const releaseSuites = new Set(['manifest', 'release', 'catalog'])
+// `vault` and `updater` belong to the release gate because the desktop host
+// gate they cover is *shipped code*: a release published without it darkens the
+// co-paid lane on every DSH Tauri desktop (#267), and nothing in the manifest
+// can notice a capability that silently went missing. `updater` carries the
+// guard that refuses to install such a release on a host that would notice.
+const releaseSuites = new Set(['manifest', 'release', 'catalog', 'vault', 'updater'])
 
 const suites = [
   ['manifest', 'build-manifest.mjs', ['--check']],
@@ -140,8 +145,16 @@ const SUITE_TIMEOUT_MS = 60_000
  */
 function runSuite(script, args) {
   return new Promise(resolve => {
+    // A suite started from a DSH Tauri session inherits that shell's marker in
+    // every descendant process, and the suites that assert a host the gate must
+    // refuse would then be measuring the caller's terminal instead of the gate
+    // (#267). Suites that mount the plugin through scripts/lib/fake-kernel.mjs
+    // scrub it themselves; this covers the ones that do not.
+    const env = { ...process.env }
+    delete env.DSH_TAURI_EMBEDDED
     const child = spawn(process.execPath, [path.join(scriptsDir, script), ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env,
     })
     let stdout = ''
     let stderr = ''

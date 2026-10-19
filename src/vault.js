@@ -44,6 +44,22 @@ export const FLAVOR_HARNESS = 'harness'
 export const FLAVOR_WEB = 'web'
 
 /**
+ * The marker the DSH Tauri desktop shell stamps on the kernel it spawns.
+ *
+ * The shell itself reads the same variable (`dsh-tauri`'s desktop-carrier
+ * adapter), so this is the host's own declaration rather than an inference:
+ * `deepseek-harness-desktop.exe` sets it on the kernel's spawn line in
+ * `spawn_and_register`, and nothing scrubs it the way Electron scrubs
+ * `ELECTRON_RUN_AS_NODE`, so it is present in the kernel's own process.env —
+ * the one environment this gate is allowed to read.
+ *
+ * It matters because the desktop app does not boot a fixed profile name: it
+ * runs the kernel with whatever profile the owner works in, and a live install
+ * was seen running `--profile core-021`, which no profile-name rule covers.
+ */
+export const TAURI_EMBEDDED_ENV = 'DSH_TAURI_EMBEDDED'
+
+/**
  * Which shell this process is running inside, or null.
  *
  * Tauri (DSHEAC AIO): the kernel is a bundled node.exe under the app's
@@ -66,6 +82,12 @@ export const FLAVOR_WEB = 'web'
  * the identical wire; what the gate keeps out are processes no DSH kernel is
  * running in — a profile context no kernel would mint.
  *
+ * DSH Tauri desktop: the shell's own `DSH_TAURI_EMBEDDED=1` marker on the
+ * kernel's environment. This is checked before the profile names because the
+ * desktop app launches the kernel under whatever profile the owner works in
+ * (`core-021` on a live install), so no fixed name can stand for it; the
+ * marker is what the shell itself gates its desktop carrier on.
+ *
  * `profileName` comes from the kernel's own profile context service, read
  * opportunistically by the caller; older kernel lines may not provide it,
  * which the Tauri branch does not depend on.
@@ -75,6 +97,7 @@ export function detectSealedHost({ env = process.env, execPath = process.execPat
   if (home.includes('com.deepseek.dsh.desktop.aio')
     && /resources[\\/]+node[\\/]+node\.exe$/i.test(String(execPath ?? ''))
     && (Array.isArray(argv) ? argv : []).includes('web-desktop')) return FLAVOR_AIO
+  if (env?.[TAURI_EMBEDDED_ENV] === '1') return FLAVOR_HARNESS
   if (profileName === 'web' || profileName === 'web-desktop') return FLAVOR_WEB
   if (profileName === 'desktop' || profileName === 'tauri') return FLAVOR_HARNESS
   return null
