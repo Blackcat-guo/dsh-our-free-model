@@ -13,7 +13,7 @@
   "license": "MIT",
   "source": {
     "repository": "https://github.com/Ebony-Vinyl/dsh-our-free-model",
-    "revision": "d73ddba6ce4bd09bff6f22640fe0687cf7dd99be"
+    "revision": "c9061f6929c237bc5cd486abb8d2ff23f7c55fac"
   },
   "x-ecosystem-packaging": {
     "adapterIsolation": "adapter/kernel.js is the only module that may import @deepseek-ai/*; enforced by scripts/catalog-test.mjs",
