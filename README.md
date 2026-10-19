@@ -147,7 +147,7 @@ PROFILE_UPGRADE_REQUIRED: offline dependency migration is not yet available
 以真实目录手工安装时，使用可信源码打出的本地 tarball：
 
 1. 创建 `<DSH_HOME>/profiles/<profile>/vendor/`，在审核过的本仓库目录运行 `npm pack --ignore-scripts --pack-destination "<DSH_HOME>/profiles/<profile>/vendor"`，或将本仓库正式发布的同版本 tarball 放入该目录。本地打包不执行 npm 发布。
-2. 在 profile 的 `package.json` 的 dependencies 中加入 `"dsh-our-free-model": "file:./vendor/dsh-our-free-model-2.5.6.tgz"`。文件名版本跟随仓库 `package.json`，不要改成同名 npm 注册表版本；再通过宿主的安装流程解析依赖。
+2. 在 profile 的 `package.json` 的 dependencies 中加入 `"dsh-our-free-model": "file:./vendor/dsh-our-free-model-2.5.7.tgz"`。文件名版本跟随仓库 `package.json`，不要改成同名 npm 注册表版本；再通过宿主的安装流程解析依赖。
 3. 在 dsh.profile.bundles 末尾追加 `"dsh-our-free-model"`。
 
 包管理器拥有这份安装的字节时，同时将 bundle config 或插件 `settings.json` 的 `distribution` 设为 `managed`，由包管理器统一更新；应用内升级、公告 feed 与热重载会停用，模型功能保留。以后更新时替换可信 tarball 并同步依赖路径，避免包管理器按旧锁文件恢复旧版本。
@@ -674,9 +674,11 @@ npm run typecheck # tsc --noEmit，严格检查 adapter/ 接缝（可选：需�
 
 DSHEAC AIO（Tauri 壳）：内核路径、内嵌 node、web-desktop profile 三重信号同时命中才解锁；
 
-DeepSeek Harness 桌面端（Electron 壳）与 DSH Tauri：使用内核提供的 `desktop` 或 `tauri` profile 上下文；仅有命令行参数不作为通过依据。
+DeepSeek Harness 桌面端（Electron 壳）：使用内核提供的 `desktop` 或 `tauri` profile 上下文；
 
-内核声明的 `web` / `web-desktop` profile 同样支持该渠道。未通过宿主识别时，不展示渠道、不发请求；通过识别后仍需满足独立的 GitHub 授权要求。
+DSH Tauri 桌面端：使用外壳自己打在进程环境里的标记 `DSH_TAURI_EMBEDDED=1`——外壳必须自己拉起内核才会带上它。该桌面端用用户实际在用的档案启动内核，档案名由用户自定（不限于 `desktop` / `tauri`），所以闸门不按 profile 名判断。
+
+内核声明的 `web` / `web-desktop` profile 同样支持该渠道。仅有命令行参数不作为通过依据。未通过宿主识别时，不展示渠道、不发请求；通过识别后仍需满足独立的 GitHub 授权要求。
 
 显示规则：模型名仅显示模型本名并带渠道前缀，如 EAC DeepSeek V4.1 Flash、EAC Kimi K3；设置页的模型卡上另有独立的 EAC 渠道徽章。
 

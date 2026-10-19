@@ -1,7 +1,10 @@
 # EAC 宿主闸门在 DSH Tauri 桌面端不认可宿主（#267）验收
 
-日期：2026-10-19。基线：本地 main `f0b979f`（2.5.3 已发布版本）。
-未推送、未改版本号、未重签发布清单——重签需要仓库主人手里的发布私钥，见文末。
+日期：2026-10-19。基线：上游 main `49171b9`（2.5.6 已发布版本）。
+本文所在分支已把版本号提到 2.5.7（`package.json` / 两份 README 的 tarball 固定名 /
+`catalog/dsh-plugin.json` / `catalog/provenance.json` / 新增 `docs/releases/v2.5.7.md` /
+`feed/announcements.json` 新条目），但**没有**重签发布清单——重签需要仓库主人手里的
+发布私钥，见文末。清单重签前，`feed/manifest.json` 仍是 2.5.6 的签名快照。
 
 > 本文最初写于 `src/vault.js` 的改动**还没落到树上**的那一版：文档、测试脚本、
 > 清单说明都在，唯独闸门本体没有，套件因此有两条红。2026-10-19 复跑时补上了本体，
@@ -51,6 +54,9 @@ D:\Software\DSH Tauri\resources\node_modules\dsh-tauri\dist\index.js:91   if (pr
 | `scripts/updater-test.mjs` | 新增 2 条断言：带标记的宿主上，不认标记的发行版被拒且已装副本一字未动；同一份升级在发行版带标记时正常装完 |
 | `scripts/test-all.mjs` | `releaseSuites` 增加 `vault`、`updater`：发布门从此覆盖闸门本体与这道升级守卫 |
 | `README.md` / `README_EN.md` | 宿主识别清单补上该标记及其原因 |
+| `package.json` / `package-lock.json` / `catalog/dsh-plugin.json` / `catalog/provenance.json` | 版本号 2.5.6 → 2.5.7（清单本身由仓库主人重签，catalog 的 revision 由 `scripts/refresh-revision.mjs` 刷新） |
+| `docs/releases/v2.5.7.md`（新增） | 本版本的发布说明 |
+| `feed/announcements.json` | 新增 2.5.7 条目（2.5.6 及更早条目不动） |
 | `AGENTS.md`（新增） | 把「桌面宿主不按 profile 名建模」「升级可能弄丢闸门」「改发布文件必须重签清单」写成硬约束，供后续会话直接照做 |
 | `docs/verification/2026-10-17-issue-audit.md` | #267 行由「上游或环境阻断」改判「本次修复」，加更正说明，审计计数相应变动 |
 
@@ -96,8 +102,9 @@ D:\Software\DSH Tauri\resources\node_modules\dsh-tauri\dist\index.js:91   if (pr
 | `node scripts/forward-boot-test.mjs`（标记随会话继承） | 14 项全 `ok`；修 `fake-kernel.mjs` 之前，同一命令报 `FAIL and serves a roster to its own key — got [200,8], want [200,1]` |
 | `node scripts/updater-test.mjs` | `updater-test: OK`；新增的 2 条守卫断言在前述「先 stash 闸门再跑」时同样红 |
 | `node scripts/build-manifest.mjs --check` | **失败（预期）**：磁盘上的 `src/vault.js`/`src/updater.js`/`client.js`/`package.json` 与本机 `feed/manifest.json` 的哈希不一致——发布前必须用发布私钥重签，见文末 |
-| `node scripts/test-all.mjs --mode contributor` | 67/71 套件通过；`vault`、`forward-boot` 均通过。其余 FAIL 见下 |
+| `node scripts/test-all.mjs --mode contributor` | 68/72 套件通过（2.5.7 分支上复跑）；`vault`、`forward-boot` 均通过。其余 FAIL 见下 |
 | `node scripts/test-all.mjs`（全量，复跑） | 66/73 套件通过；FAIL：`manifest`、`release`、`catalog`（发布清单未重签 + `README.md` 在工作树里被 WIP 删掉，见下）、`reload`、`channel-source`、`gateway-source`、`opencode-parity`（本机环境） |
+| `node scripts/test-all.mjs --mode release`（2.5.7 分支） | 2/5 通过（`release-preparation`、`vault`）；FAIL：`manifest`、`release`、`catalog`——三项都因发布清单尚未用私钥重签，以及 catalog 的 revision 仍指向上一次内容提交 |
 | 运行中的插件自身 API `GET /api/our-free-model/summary` | `laneAvailable: true`（修复前同一接口返回 `false`），`channel: "eac"` 行 8 条，全部 `availability: "available"`；`catalog` 35 行 |
 | 同一实例 `GET /api/our-free-model/pool` | `ok: true`（修复前随车道一起关闭） |
 
@@ -119,22 +126,22 @@ Invoke-RestMethod http://127.0.0.1:3080/api/our-free-model/summary
 
 已用 `git stash push -- src/vault.js scripts/vault-test.mjs scripts/test-all.mjs` 复原基线复跑确认：这四项在未改动的树上同样失败。本次没有修它们，也没有声称它们通过。
 
-**发布相关三项失败，是「还没重签清单 + 工作树里的 2.5.5 WIP」的必然结果，不是本次改动引入的**：
+**发布相关三项失败，是「发布清单还没用私钥重签」的必然结果，不是本次改动引入的**（2.5.7 分支实测）：
 
 | 套件 | 失败原因 |
 | --- | --- |
-| `manifest` | `build-manifest.mjs --check`：`feed/manifest.json` 仍是 2.5.3 的签名快照，磁盘已是 2.5.5。漂移文件里 `client.js`、`package.json`、`src/sponsor.css`、`src/sponsor.js` 在本次改动之前就在工作树里；本次又多出 `src/vault.js`、`src/updater.js` |
-| `release` | 同上（`the manifest describes the tree it lives in — drifted`），并且 `src/sponsor.*` 未被清单收录 |
-| `catalog` | `version tracks package.json — got "2.5.3", want "2.5.5"`，以及 `ENOENT ... README.md`（WIP 把 README 删了，catalog 套件要读它的 tarball 版本号） |
+| `manifest` | `build-manifest.mjs --check`：`feed/manifest.json` 仍是 2.5.6 的签名快照，磁盘已是 2.5.7。漂移文件：`src/vault.js`、`src/updater.js`（本次改动）、`package.json`（版本号） |
+| `release` | 同上（`the manifest describes the tree it lives in — drifted: src/updater.js, src/vault.js`），以及「CRLF 工作树」与「安装后逐文件比对」两条随漂移一起红 |
+| `catalog` | `source revision is the last commit that touched the release content — got "d73ddba…", want "2e5e91d…"`（catalog 的 revision 仍指向上一次内容提交），以及 `the digests are the bytes on disk — got false`（清单摘要仍是 2.5.6 的） |
 
-也就是说：这一版必须由仓库主人用发布私钥重签清单、把 `README.md` / `README_EN.md` 的版本号补上，才能通过发布门。代理没有私钥，也不该伪造签名。
+也就是说：这一版必须由仓库主人用发布私钥重签清单（`prepare-release` 流程或 `build-manifest.mjs --key`），才能通过发布门。代理没有私钥，也不该伪造签名。
 
 ## 未验证
 
 - 没有重启 DSH Tauri 桌面端。上述端到端结果是插件自身的文件监听热重载之后、经它自己那套设置接口读到的（`settings.autoReloadWatch: true`、`reloadCount: 12`）；**冷启动路径未复测**，不过冷启动走的闸门与热重载是同一段 `detectSealedHost`。
 - 设置页的渲染没有复测：读的是接口返回的 `catalog`，不是浏览器里看到的模型选择器。`laneAvailable` 与 8 条 `channel: "eac"` 都源自接口，渲染是下一步。
 - 没有出网验证真实 EAC 模型能否出字。`availability: "available"` 是这一轮探测的结论（`probedAt` 见各行），不代表上游此刻一定答得出来。
-- 没有推送、没有发布、没有改版本号、没有重签 `feed/manifest.json`（私钥不在本机代理手里）。**要让修复随更新继续存在，必须由仓库主人重签并发布一版**——否则用户装回旧发行版时，只有本机这道升级守卫拦着。
+- 没有发布、没有重签 `feed/manifest.json`（私钥不在本机代理手里）。**要让修复随更新继续存在，必须由仓库主人重签并发布一版**——否则用户装回旧发行版时，只有本机这道升级守卫拦着。版本号已提到 2.5.7，但清单与目录记录的重签仍待仓库主人完成。
 
 ## 一个仍存在的风险（已缓解，未消除）
 

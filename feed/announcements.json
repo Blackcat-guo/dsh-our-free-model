@@ -2,6 +2,18 @@
   "$schema": "./announcements.schema.md",
   "announcements": [
     {
+      "id": "2026-10-20-v2.5.7-plugin-release",
+      "title": "v2.5.7：修复 DSH Tauri 桌面端 EAC 协付渠道不加载",
+      "level": "update",
+      "pinned": true,
+      "createdAt": "2026-10-19T20:30:00Z",
+      "link": {
+        "url": "https://github.com/Ebony-Vinyl/dsh-our-free-model/releases/tag/v2.5.7",
+        "label": "查看插件更新说明"
+      },
+      "html": "<p><b>2.5.7 修复 DSH Tauri 桌面端上 EAC 协付渠道整条不加载的问题。</b>该桌面端用用户实际在用的档案启动内核，档案名由用户自定，所以原先按 <code>desktop</code> / <code>tauri</code> profile 名判断的宿主闸门认不出真实安装；现在改认外壳自己打在进程环境里的 <code>DSH_TAURI_EMBEDDED=1</code> 标记，闸门强度不变，仅有命令行参数依旧不通过。同时，一键升级现在会拒收不认该标记的旧发行版（安装前拦截，已装副本不受影响），发布门也纳入了这组测试。</p>"
+    },
+    {
       "id": "2026-10-20-v2.5.6-plugin-release",
       "title": "v2.5.6：插件赞助卡片精简，免费模型与 EAC 页面统一展示",
       "level": "update",
