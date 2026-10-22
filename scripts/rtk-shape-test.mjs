@@ -57,8 +57,21 @@ const search = filenames.flatMap(file => Array.from({ length: 6 }, (_, i) => fil
 for (const wire of Object.keys(wires)) check('all mixed filenames and matches survive: ' + wire, () => {
   const { output, stats } = shipped(search, wire)
   assert.ok(stats.saved > 0)
-  assert.ok(output.startsWith('36 matches in 6F:'))
-  for (const file of filenames) assert.ok(output.includes('[file] ' + file + ' (6):'), file)
+  // safeApply restores the input's line ending, so compare on normalised lines.
+  const lines = output.replace(/\r\n/g, '\n').split('\n')
+  assert.ok(lines[0].startsWith('36 matches in 6F:'))
+  // The layout groups by directory and prints the basename per file, so the
+  // directory part appears once as a label and never repeats on every match.
+  for (const file of filenames) {
+    const sep = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'))
+    const dir = sep === -1 ? '' : file.slice(0, sep).replace(/\\/g, '/')
+    const base = sep === -1 ? file : file.slice(sep + 1)
+    if (dir !== '') {
+      assert.ok(lines.includes(dir + '/'), 'directory label: ' + dir)
+      assert.ok(!output.includes(file + ' ('), 'the full path is not repeated per file: ' + file)
+    }
+    assert.ok(output.includes('[file] ' + base + ' (6):'), 'basename header: ' + base)
+  }
   for (let i = 0; i < 6; i++) assert.equal(output.split('UNIQUE_' + i).length - 1, 6)
 })
 check('drive-absolute search uses grep rather than find', () => {

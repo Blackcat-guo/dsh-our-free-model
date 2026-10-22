@@ -434,13 +434,26 @@ check('buildOutput: cargo log counts crates, keeps errors with their spans', () 
   assert.ok(!out.includes('Compiling serde'), 'per-crate progress dropped')
 })
 
-check('grep: groups by file with line numbers and a per-file cap marker', () => {
+check('grep: groups by directory then file, with a per-file cap marker', () => {
   const out = grep(GREP_SAMPLE)
   assert.ok(out.startsWith('30 matches in 2F:'))
-  assert.ok(out.includes('[file] src/token-saver/rtk/autodetect.js (16):'))
+  assert.ok(out.includes('src/token-saver/rtk/\n'), 'directory label printed once')
+  assert.ok(out.includes('  [file] autodetect.js (16):'), 'basename, not the full path')
+  assert.ok(out.includes('  [file] grep.js (14):'))
   assert.ok(out.includes('  +6'), 'matches past the per-file cap are counted')
   assert.ok(out.includes('    18:'), 'line number right-aligned')
   assert.ok(out.length < GREP_SAMPLE.length)
+})
+
+check('grep: a file with one match carries its own name instead of a header', () => {
+  // One match per file is the shape an absolute-directory search produces; a
+  // per-file header there costs more than the path repetition it saves.
+  const spread = Array.from({ length: 60 }, (_, i) => `src/pkg/mod${i}.js:${i + 1}:hit ${i}`).join('\n')
+  const out = grep(spread)
+  assert.ok(out.startsWith('60 matches in 60F:'))
+  assert.ok(!out.includes('[file] '), 'no header when a file matches once')
+  assert.ok(out.includes('  mod7.js:8: hit 7'), 'name:line: content on one line')
+  assert.ok(out.length < spread.length, 'still smaller than the input')
 })
 
 check('find: groups paths by directory', () => {
