@@ -29,6 +29,7 @@
  */
 
 import { DETECT_WINDOW, READ_NUMBERED_MIN_HIT_RATIO, SMART_TRUNCATE_MIN_LINES } from './constants.js'
+import { toLf } from './eol.js'
 import { gitDiff } from './filters/gitDiff.js'
 import { gitStatus } from './filters/gitStatus.js'
 import { gitLog } from './filters/gitLog.js'
@@ -55,8 +56,15 @@ const RE_LS_ROW = /^[-dlbcps][rwx-]{9}/m
 const RE_LS_TOTAL = /^total \d+$/m
 
 export function autoDetectFilter(text) {
+  if (typeof text !== 'string') return null
+  // Detection runs on LF-normalised text so that a CRLF input is recognised
+  // the same way as an LF one. The patterns below anchor with `$` (without the
+  // `m` flag) in some places, and `.` does not match `\r`; without this, a
+  // Windows tool result can be classified differently from the same output
+  // produced on a LF platform. See `eol.js`.
+  const normalised = toLf(text)
   // Rust: floor_char_boundary to avoid UTF-8 split — JS .slice() by char is safe
-  const head = text.length > DETECT_WINDOW ? text.slice(0, DETECT_WINDOW) : text
+  const head = normalised.length > DETECT_WINDOW ? normalised.slice(0, DETECT_WINDOW) : normalised
 
   if (RE_GIT_LOG.test(head)) return gitLog
   if (RE_GIT_DIFF.test(head) || RE_GIT_DIFF_HUNK.test(head)) return gitDiff
@@ -76,10 +84,10 @@ export function autoDetectFilter(text) {
   // Stop sampling at the fifth non-empty row; only a candidate needs the
   // complete-output validation below.
   const first5 = []
-  for (let start = 0; start < text.length && first5.length < 5;) {
-    const newline = text.indexOf('\n', start)
-    const end = newline === -1 ? text.length : newline
-    const line = text.slice(start, end)
+  for (let start = 0; start < normalised.length && first5.length < 5;) {
+    const newline = normalised.indexOf('\n', start)
+    const end = newline === -1 ? normalised.length : newline
+    const line = normalised.slice(start, end)
     if (line.trim()) first5.push(line)
     start = end + 1
   }
@@ -88,7 +96,7 @@ export function autoDetectFilter(text) {
     return hit !== null && /^\d+$/.test(hit.line)
   })
   if (hasCandidate) {
-    return first5.some(isGrepHit) && parseGrepOutput(text) !== null ? grep : null
+    return first5.some(isGrepHit) && parseGrepOutput(normalised) !== null ? grep : null
   }
 
   // Rust find rule: ALL non-empty lines path-like (no ':'), >=3 lines
@@ -112,7 +120,7 @@ export function autoDetectFilter(text) {
   if (nonEmpty.length >= 5) return dedupLog
 
   // Last resort: big blob with no structure — smart truncate
-  if (text.split('\n').length >= SMART_TRUNCATE_MIN_LINES) return smartTruncate
+  if (normalised.split('\n').length >= SMART_TRUNCATE_MIN_LINES) return smartTruncate
 
   return null
 }

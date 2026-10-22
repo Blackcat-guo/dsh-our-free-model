@@ -31,9 +31,10 @@ export function gitStatus(input) {
   let modified = 0
   let untracked = 0
   let conflicts = 0
+  let section = ''
 
   for (const raw of lines) {
-    if (!raw.trim()) continue
+    if (!raw.trim()) { section = ''; continue }
 
     // Long-form branch detection (LLM usually sends this, not porcelain)
     const longBranch = raw.match(/^On branch (\S+)/)
@@ -81,8 +82,29 @@ export function gitStatus(input) {
       continue
     }
 
-    // "Untracked files:" section — gather bare paths after this marker
-    // Handled implicitly: plain paths without markers are skipped (safer).
+    // Long-form section headers. The untracked section lists its paths as bare
+    // indented lines with no "kind:" prefix, so without tracking the section
+    // those files are silently dropped — a model then concludes there is
+    // nothing new to commit while untracked files sit on disk. (Measured: the
+    // long form lost every untracked path before this fix.)
+    if (/^Untracked files:/i.test(raw)) { section = 'untracked'; continue }
+    if (/^Changes not staged for commit:/i.test(raw)) { section = 'not-staged'; continue }
+    if (/^Changes to be committed:/i.test(raw)) { section = 'staged'; continue }
+    if (/^Unmerged paths:/i.test(raw)) { section = 'unmerged'; continue }
+
+    if (section === 'untracked') {
+      // Inside the untracked section, an indented line that is not a hint
+      // parenthesised "(use ...)" is a path.
+      if (/^\s/.test(raw) && !/^\s*\(/.test(raw) && !/^use /i.test(raw.trim())) {
+        const path = raw.trim()
+        if (path) { untracked++; untrackedFiles.push(path) }
+      }
+      continue
+    }
+
+    // A non-indented line that is not a known header ends the current section
+    // (e.g. "no changes added to commit" closes "Changes not staged for commit").
+    if (!/^\s/.test(raw)) section = ''
   }
 
   let out = ''

@@ -383,6 +383,28 @@ check('gitStatus: long form (On branch / modified:) is parsed too', () => {
   assert.ok(!out.includes('clean'), 'three modified files are not a clean tree')
 })
 
+check('gitStatus: long form keeps the untracked section (bare indented paths)', () => {
+  const out = gitStatus(GIT_STATUS_LONG)
+  assert.ok(out.includes('? Untracked: 1 files'), 'the untracked count survives')
+  assert.ok(out.includes('scratch/rtk-notes.txt'), 'the untracked path survives')
+  assert.ok(!out.includes('(use "git add'), 'the hint line is not a path')
+})
+
+check('gitStatus: CRLF input keeps every modified path', () => {
+  // Through safeApply, the production boundary: the filter runs on LF-normalised
+  // text and the result is converted back to CRLF.
+  const crlf = GIT_STATUS_LONG.replace(/\n/g, '\r\n')
+  const out = safeApply(gitStatus, crlf)
+  assert.ok(out.includes('~ Modified: 3 files'), `CRLF lost the modified count:\n${out}`)
+  assert.ok(out.includes('src/messages.js'), `CRLF lost a modified path:\n${out}`)
+})
+
+check('gitStatus: CRLF and LF long form produce the same content', () => {
+  const lf = safeApply(gitStatus, GIT_STATUS_LONG).replace(/\r\n/g, '\n')
+  const crlf = safeApply(gitStatus, GIT_STATUS_LONG.replace(/\n/g, '\r\n')).replace(/\r\n/g, '\n')
+  assert.equal(crlf, lf, 'the same status compresses differently by line ending')
+})
+
 check('gitLog: subjects and stats survive, commit-body prose does not', () => {
   const out = gitLog(GIT_LOG_SAMPLE)
   assert.ok(out.includes('Subject: fix: stop dropping tool results on the responses wire'))
@@ -513,6 +535,15 @@ check('autodetect: an unstructured short blob selects nothing', () => {
   assert.equal(autoDetectFilter('just a short note with no tool shape at all'), null)
 })
 
+check('autodetect: CRLF input selects the same filter as LF input', () => {
+  for (const [expected, sample] of DETECT_CASES) {
+    const crlf = sample.replace(/\n/g, '\r\n')
+    const fn = autoDetectFilter(crlf)
+    assert.ok(fn !== null, `no filter for the CRLF form of ${expected}`)
+    assert.equal(fn.filterName, expected, `CRLF changed the detected shape of ${expected}`)
+  }
+})
+
 check('autodetect: a realistic numbered dump is claimed by dedup-log, as in the source', () => {
   // The source gate is `lines.length >= SMART_TRUNCATE_MIN_LINES` where `lines`
   // comes from the 1 KiB detection window, not the whole blob. A read_file dump
@@ -526,6 +557,18 @@ check('autodetect: a realistic numbered dump is claimed by dedup-log, as in the 
 
 // ── safety ───────────────────────────────────────────────────────────────────
 console.log('\nsafety')
+
+check('safeApply: the filter output keeps the input line ending', () => {
+  const crlf = GIT_STATUS_LONG.replace(/\n/g, '\r\n')
+  const out = safeApply(gitStatus, crlf)
+  assert.ok(out.includes('\r\n'), 'a CRLF input still yields CRLF output')
+  assert.ok(!/[^\r]\n/.test(out), 'no bare LF was introduced')
+})
+
+check('safeApply: a non-string input is passed through untouched', () => {
+  assert.equal(safeApply(gitStatus, undefined), undefined)
+  assert.equal(safeApply(gitStatus, 42), 42)
+})
 
 check('an error tool result is never touched (messages wire)', () => {
   const payload = {
@@ -852,7 +895,7 @@ check('the module tree imports nothing but its own relative files', () => {
     return entry.isDirectory() ? walk(absolute) : [absolute]
   })
   const files = walk(root)
-  assert.equal(files.length, 18, '12 filters + 6 top-level modules')
+  assert.equal(files.length, 19, '12 filters + 7 top-level modules')
   const offenders = []
   for (const file of files) {
     const body = fs.readFileSync(file, 'utf8')
