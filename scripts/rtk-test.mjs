@@ -456,6 +456,19 @@ check('grep: a file with one match carries its own name instead of a header', ()
   assert.ok(out.length < spread.length, 'still smaller than the input')
 })
 
+check('grep: never answers something larger than its input', () => {
+  // 60 hits spread over 60 distinct directories: the directory label is paid
+  // once per hit, so the layout comes out larger than the input. Answering that
+  // would dress a loss up as a saving.
+  const scattered = Array.from({ length: 60 }, (_, i) =>
+    `C:/work/project/src/module${String(i).padStart(2, '0')}/handler.js:${i + 10}: export function handle${i}(input) { return input.map(x => x * ${i}) }`).join('\n')
+  assert.equal(grep(scattered), scattered, 'returns the input unchanged')
+  // Control: the same search clustered into a few directories does shrink.
+  const clustered = Array.from({ length: 60 }, (_, i) =>
+    `C:/work/project/src/pkg${i % 5}/handler${i}.js:${i + 10}: export function handle${i}(input) { return input.map(x => x * ${i}) }`).join('\n')
+  assert.ok(grep(clustered).length < clustered.length, 'clustered still compresses')
+})
+
 check('find: groups paths by directory', () => {
   const out = find(FIND_SAMPLE)
   assert.ok(out.startsWith('14 files in 5 dirs:'))

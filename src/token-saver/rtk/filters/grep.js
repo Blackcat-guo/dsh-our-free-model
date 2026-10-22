@@ -31,6 +31,10 @@
  * - A file with **exactly one** match gets no header: the line carries its own
  *   `basename:line: content`, which is shorter than a header plus a body.
  *
+ * When even that layout cannot beat the input — a sparse search spread over as
+ * many directories as files pays one label line per hit — the filter returns the
+ * input unchanged rather than a longer string.
+ *
  * Every match keeps its file, its line number, and its content. The directory
  * label normalises Windows separators to `/`, the same convention the `find`
  * filter already uses.
@@ -105,6 +109,13 @@ export function grep(input) {
     }
   }
 
+  // A sparse search spread over as many directories as files pays one label
+  // line per hit, so the layout can come out *larger* than the input (measured:
+  // -3.1% on 60 files in 60 directories). Returning that would be a loss dressed
+  // up as a saving. `compressText` already refuses a larger result, but a direct
+  // caller (a test, another tool) would not — so refuse here too, the same way
+  // `smartTruncate` refuses below its line minimum.
+  if (out.length >= input.length) return input
   return out
 }
 

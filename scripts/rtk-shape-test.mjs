@@ -87,7 +87,15 @@ check('colon-bearing match content survives', () => {
   assert.ok(output.includes(content))
 })
 check('blank lines are accepted around genuine hits', () => {
-  assert.ok(grep('\nsrc/a.js:12: match\n\n').startsWith('1 matches in 1F:'))
+  // A single short hit cannot be compacted into fewer bytes than the input, so
+  // the filter answers the input unchanged — the point of this case is that the
+  // blank lines do not stop the hit from being *recognised*, not that it shrinks.
+  const one = '\nsrc/a.js:12: match\n\n'
+  assert.equal(grep(one), one)
+  // With enough matches the same shape does compress, and the leading blank
+  // lines are gone from the output.
+  const many = '\n' + Array.from({ length: 30 }, (_, i) => 'src/a.js:' + (i + 1) + ': ' + 'match text '.repeat(8)).join('\n') + '\n\n'
+  assert.ok(grep(many).startsWith('30 matches in 1F:'))
 })
 // Conservative detection intentionally leaves these standalone searches intact.
 // They must not depend on a preceding ordinary filename to exercise the guard.
